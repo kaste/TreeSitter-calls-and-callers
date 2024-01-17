@@ -1,4 +1,6 @@
 from contextlib import contextmanager
+import bisect
+from functools import lru_cache
 from itertools import chain
 from pathlib import Path
 import time
@@ -133,6 +135,11 @@ def highlight_arguments(view: sublime.View):
     view.add_regions('treesitter-parens', list(flatten(parens)), scope='pyhi-parens')
 
 
+@lru_cache(1)
+def query_node(_cc, scope, node, query_file, queries_path):
+    return api.query_node(scope, node, query_file, queries_path)
+
+
 @print_runtime("highlight_vars")
 def highlight_vars(view: sublime.View) -> None:
     bid = view.buffer_id()
@@ -143,14 +150,17 @@ def highlight_vars(view: sublime.View) -> None:
     query_file = "locals.scm"
     scope = tree_dict["scope"]
     node = tree_dict["tree"].root_node
-    captures = api.query_node(scope, node, query_file, queries_path)
-    scopes = [node for node, name in captures if name == "scope"]
-    # print(scopes)
-    definitions = [node for node, name in captures if name in ("definition.var", "definition.parameter")]
-    references = [
-        node for node, name in captures
-        if name == "reference"
-    ]
+    captures = query_node(view.change_count(), scope, node, query_file, queries_path)
+    scopes, definitions, references, definitions_offsets = [], [], [], []
+    for node, name in captures:
+        if name == "scope":
+            scopes.append(node)
+        elif name in ("definition.var", "definition.parameter"):
+            definitions.append(node)
+            definitions_offsets.append(node.start_byte)
+        elif name == "reference":
+            references.append(node)
+    scopes = sorted(scopes, key=api.get_size)
     frozen_sel = [s for s in view.sel()]
 
     refs = [
@@ -160,21 +170,45 @@ def highlight_vars(view: sublime.View) -> None:
         if (node in references)
         if (node not in definitions)
         if (ancestors := api.get_ancestors(node))
-        if (containing_scopes := sorted(
-            (scope for scope in scopes if api.contains(scope, node)),
-            key=api.get_size,
-        ))
+        if (containing_scopes := [
+            scope for scope in scopes
+
+            # Instead of:
+            # if api.contains(scope, node)
+            # Inline:
+            if scope.start_byte <= node.start_byte and scope.end_byte >= node.end_byte
+        ])
         if (local_references := next((
             local_refs
             for cs in containing_scopes
             if (local_refs := [
-                ref for ref in definitions
+                # Instead of:
+                # ref for ref in definitions
+                # if api.contains(cs, ref)
+                # Do:  (definitions is sorted by offset)
+                ref for ref in definitions[
+                    bisect.bisect_left(definitions_offsets, cs.start_byte):
+                    bisect.bisect_right(definitions_offsets, cs.end_byte)
+                ]
+
                 if ref.text == node.text
-                if api.contains(cs, ref)
-                if (defining_scope := min(
-                    (scope for scope in scopes if api.contains(scope, ref)),
-                    key=api.get_size,
-                    default=None
+
+                # Instead of:
+                # if (defining_scope := next(
+                #     (
+                #         scope for scope in scopes
+                #         if api.contains(scope, ref)
+                #     ),
+                #     None
+                # ))
+                # Do:  len(get_ancestors) < len(scopes) and
+                #      `ancestor in scopes` is faster as it is done in C speed
+                if (defining_scope := next((
+                        ancestor
+                        for ancestor in api.get_ancestors(ref)
+                        if ancestor in scopes
+                    ),
+                    None
                 ))
                 if defining_scope in ancestors
             ])
