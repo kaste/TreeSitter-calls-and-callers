@@ -127,9 +127,32 @@ def highlight_arguments(view: sublime.View):
     view.add_regions('treesitter-parens', list(flatten(parens)), scope='pyhi-parens')
 
 
+CAN_ADD_ASSIGNMENT = {}
+
+
 @lru_cache(1)
 def query_node(_cc, scope, node, query_file, queries_path):
-    return api.query_node(scope, node, query_file, queries_path)
+    assignment_expression = """
+    (assignment_expression left: (identifier) @definition.var)
+    """
+    if not (scope := api.check_scope(scope)):
+        return
+    language_name = api.get_scope_to_language_name()[scope]
+    queries_path = api.os.path.expanduser(queries_path)
+    query_s = api.get_query_s_from_file(queries_path, query_file=query_file, language_name=language_name)
+    if scope in CAN_ADD_ASSIGNMENT:
+        if CAN_ADD_ASSIGNMENT[scope]:
+            query_s += assignment_expression
+        return api.query_node_with_s(scope, query_s, node)
+
+    try:
+        rv = api.query_node_with_s(scope, query_s + assignment_expression, node)
+    except NameError:
+        CAN_ADD_ASSIGNMENT[scope] = False
+        rv = api.query_node_with_s(scope, query_s, node)
+    else:
+        CAN_ADD_ASSIGNMENT[scope] = True
+    return rv
 
 
 def exclude(node, language_name):
