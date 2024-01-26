@@ -132,6 +132,20 @@ def query_node(_cc, scope, node, query_file, queries_path):
     return api.query_node(scope, node, query_file, queries_path)
 
 
+def exclude(node, language_name):
+    if language_name == "python":
+        # In python, exclude `bar` when e.g. `foo(bar=baz)` is given
+        # (T.i. the keywords are identifiers. Why?)
+        """(keyword_argument name: (identifier) @not-a-ref)"""
+        if (
+            (parent := node.parent) and
+            (parent.type == "keyword_argument") and
+            (parent.child_by_field_name("name") == node)
+        ):
+            return True
+    return False
+
+
 # @print_runtime("highlight_vars")
 def highlight_vars(view: sublime.View) -> None:
     bid = view.buffer_id()
@@ -154,6 +168,7 @@ def highlight_vars(view: sublime.View) -> None:
             references.append(node)
     scopes = sorted(scopes, key=api.get_size)
     frozen_sel = [s for s in view.sel()]
+    language_name = api.get_scope_to_language_name()[scope]
 
     refs = [
         api.get_region_from_node(node_, view)
@@ -161,6 +176,7 @@ def highlight_vars(view: sublime.View) -> None:
         if (node := get_node_spanning_region(s, bid))
         if (node in references)
         if (node not in definitions)
+        if (not exclude(node, language_name))
         if (ancestors := api.get_ancestors(node))
         if (containing_scopes := [
             scope for scope in scopes
