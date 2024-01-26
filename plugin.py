@@ -34,37 +34,6 @@ def upwards_until(node, predicate):
     return None
 
 
-query_s = """\
-(call
-    (attribute) @caller)
-(call
-    (identifier) @caller)
-(call
-    (argument_list) @arguments)
-"""
-
-query_s = """\
-(call
-  function: [
-      (identifier) @name
-      (attribute
-        attribute: (identifier) @name)
-  ])
-(call
-    (argument_list) @arguments)
-"""
-
-query_s = """\
-(call
-  function: [
-      (identifier) @name
-      (attribute
-        attribute: (identifier) @name)
-  ])
-(call
-  arguments: (_) @arguments)
-
-"""
 
 
 class CursorMoves(sublime_plugin.EventListener):
