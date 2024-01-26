@@ -1,10 +1,12 @@
 from contextlib import contextmanager
 import bisect
-from functools import lru_cache
+from functools import lru_cache, partial
 from itertools import chain
 from pathlib import Path
 import time
 import threading
+
+from typing import Callable
 
 import sublime
 import sublime_plugin
@@ -34,17 +36,38 @@ def upwards_until(node, predicate):
     return None
 
 
+THROTTLED_CACHE = {}
+THROTTLED_LOCK = threading.Lock()
+
+
+def throttled(fn, *args, **kwargs) -> Callable[[], None]:
+    token = (fn,)
+    action = partial(fn, *args, **kwargs)
+    with THROTTLED_LOCK:
+        THROTTLED_CACHE[token] = action
+
+    def task():
+        with THROTTLED_LOCK:
+            ok = THROTTLED_CACHE[token] == action
+        if ok:
+            action()
+
+    return task
 
 
 class CursorMoves(sublime_plugin.EventListener):
     # @print_runtime("on_selection_modified")
     def on_selection_modified(self, view):
-        highlight_callers(view)
-        highlight_arguments(view)
-        highlight_vars(view)
+        sublime.set_timeout_async(throttled(highlight_calls_and_callers, view))
+        sublime.set_timeout_async(throttled(highlight_vars, view))
 
 
-# @print_runtime("highlight_callers")
+# @print_runtime("highlight_calls_and_callers")
+def highlight_calls_and_callers(view: sublime.View):
+    highlight_callers(view)
+    highlight_arguments(view)
+
+
 def highlight_callers(view: sublime.View):
     bid = view.buffer_id()
     frozen_sel = [s for s in view.sel()]
@@ -109,7 +132,7 @@ def query_node(_cc, scope, node, query_file, queries_path):
     return api.query_node(scope, node, query_file, queries_path)
 
 
-@print_runtime("highlight_vars")
+# @print_runtime("highlight_vars")
 def highlight_vars(view: sublime.View) -> None:
     bid = view.buffer_id()
     if not (tree_dict := api.get_tree_dict(bid)):
