@@ -245,6 +245,10 @@ def highlight_vars(view: sublime.View) -> None:
             ])
             # if (print(local_refs) or True)
         ), []))
+        # Typically assignments happen (textual) before the usage,
+        # select all assignments before the cursor only, but if there
+        # are none before, show the *last* local assignment.
+        # for node_ in [n for n in local_references if n.start_point < (node.start_point[0], 0)] or [local_references[-1]]
         for node_ in local_references
     ]
 
