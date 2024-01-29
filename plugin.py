@@ -133,7 +133,7 @@ CAN_ADD_ASSIGNMENT = {}
 @lru_cache(1)
 def query_node(_cc, scope, node, query_file, queries_path):
     assignment_expression = """
-    (assignment_expression left: (identifier) @definition.var)
+    (assignment_expression left: (identifier) @local.definition.var)
     """
     if not (scope := api.check_scope(scope)):
         return
@@ -175,19 +175,19 @@ def highlight_vars(view: sublime.View) -> None:
     if not (tree_dict := api.get_tree_dict(bid)):
         return None
 
-    queries_path = PROJECT_ROOT / "nvim-treesitter" / "queries"
+    queries_path = PROJECT_ROOT / "nvim-treesitter" / "runtime" / "queries"
     query_file = "locals.scm"
     scope = tree_dict["scope"]
     node = tree_dict["tree"].root_node
     captures = query_node(view.change_count(), scope, node, query_file, queries_path)
     scopes, definitions, references, definitions_offsets = [], [], [], []
     for node, name in captures:
-        if name == "scope":
+        if name == "local.scope":
             scopes.append(node)
-        elif name in ("definition.var", "definition.parameter"):
+        elif name in ("local.definition.var", "local.definition.parameter"):
             definitions.append(node)
             definitions_offsets.append(node.start_byte)
-        elif name == "reference":
+        elif name == "local.reference":
             references.append(node)
     scopes = sorted(scopes, key=api.get_size)
     frozen_sel = [s for s in view.sel()]
