@@ -209,6 +209,9 @@ def highlight_vars(view: sublime.View) -> None:
         if (node not in definitions)
         if (not exclude(node, language_name))
         if (ancestors := api.get_ancestors(node))
+        # if (print("node", node.text, node) or True)
+        # if (print("parent", node.parent, node.parent.text) or True)
+        # if (print("ancestors", ancestors) or True)
         if (containing_scopes := [
             scope for scope in scopes
 
