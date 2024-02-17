@@ -157,13 +157,21 @@ def query_node(_cc, scope, node, query_file, queries_path):
 
 def exclude(node, language_name):
     if language_name == "python":
-        # In python, exclude `bar` when e.g. `foo(bar=baz)` is given
-        # (T.i. the keywords are identifiers. Why?)
-        """(keyword_argument name: (identifier) @not-a-ref)"""
         if (
-            (parent := node.parent) and
-            (parent.type == "keyword_argument") and
-            (parent.child_by_field_name("name") == node)
+            (parent := node.parent) and (
+                (
+                    # Exclude `bar` in e.g. `foo(bar=baz)` as reference
+                    # (T.i. the keywords are identifiers. Why?)
+                    # query: (keyword_argument name: (identifier) @not-a-ref)
+                    (parent.type == "keyword_argument") and
+                    (parent.child_by_field_name("name") == node)
+                )
+                or (
+                    # Exclude `bar` in e.g. `node.bar` as reference
+                    (parent.type == "attribute") and
+                    (parent.start_point != node.start_point)
+                )
+            )
         ):
             return True
     return False
